@@ -28,10 +28,10 @@ def get_text_from_url(url):
     download = tr.fetch_url(url) 
     text = tr.extract(download, json_output=True)
     if text is None: 
-        return
+        return {'title': None, 'text': None}
     article = json.loads(text)
     return article
-    return article['title'] + '. ' + article['text']
+    #return article['title'] + '. ' + article['text']
 
 
 def write_to_file(data, label, filename):
@@ -53,7 +53,8 @@ def get_article(df):
         for i, row in df.iterrows():
             try:
                 article = get_text_from_url(row.url)
-                if article is not article['title'] is not None and article['text'] is not None:
+                
+                if article['title'] is not None and article['text'] is not None:
                     dem_bias, rep_bias = row['democrat.vote'], row['republican.vote']
                     dem_score = score_reference_num[score_reference.index(dem_bias)]
                     rep_score = score_reference_num[::-1][score_reference.index(rep_bias)]
