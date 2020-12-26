@@ -7,7 +7,7 @@ from sklearn.model_selection import train_test_split
 from transformers import TFBertForSequenceClassification
 from util import get_logdir
 from imblearn.over_sampling import RandomOverSampler
-from sklearn.preprocessing import MultiLabelBinarizer
+from sklearn.preprocessing import OneHotEncoder
 
 
 
@@ -18,7 +18,7 @@ model = TFBertForSequenceClassification.from_pretrained(
         num_labels=1
         )
 
-def random_oversampler():
+def random_oversampler(X, y, label_type):
     pass
 
 
@@ -28,6 +28,8 @@ def build_dataset(path, tokenizer, val_size):
     data_df['data'] = data_df['data'].apply(str)
     data_df['labels'] = data_df['labels'].apply(float)
     label_values = np.array(data_df['labels'].values)[:, None]
+    enc = OneHotEncoder(handle_unknown='ignore')
+    enc.fit(label_values) 
     data = np.array(data_df['data'].values)[:, None]
 
     def get_dataset(X, y):
@@ -67,11 +69,13 @@ def build_dataset(path, tokenizer, val_size):
                                                             label_values,
                                                             test_size=val_size,
                                                             stratify=label_values)
-        #oversample = RandomOverSampler(sampling_strategy='minority') 
+        oversample = RandomOverSampler(sampling_strategy='minority') 
         #print(train_df.shape)
-        #train_X_over, train_y_over = oversample.fit_sample(train_X, train_y)
+        train_X_over, train_y_over = oversample.fit_sample(
+            train_X,
+            enc.fit_transform(train_y))
         #train_df_over = pd.DataFrame({'data': train_df_over, 'one_hot_labels': train_labels_over})
-        return get_dataset(train_X, train_y), get_dataset(test_X, test_y)
+        return get_dataset(train_X_over, enc.inverse_transform(train_y_over)), get_dataset(test_X, test_y)
 
     return get_dataset(data_df), None
 
