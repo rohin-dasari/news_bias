@@ -23,10 +23,20 @@ def random_oversampler(X, y, label_type):
 
 
 def build_dataset(path, tokenizer, val_size):
+    
+    label_mapping = {
+            -1: 0,
+            -0.5: 0.16,
+            -0.25: 0.32, 
+            0: 0.48,
+            0.25: 0.64,
+            0.5: 0.80,
+            1: 1, 
+            }
 
     data_df = pd.read_csv(path)
     data_df['data'] = data_df['data'].apply(str)
-    data_df['labels'] = data_df['labels'].apply(float)
+    data_df['labels'] = data_df['labels'].apply(float).apply(lambda l: label_mapping[l])
     label_values = np.array(data_df['labels'].values)[:, None]
     enc = OneHotEncoder(handle_unknown='ignore')
     enc.fit(label_values) 
@@ -73,16 +83,33 @@ def build_dataset(path, tokenizer, val_size):
         #print(train_df.shape)
         train_X_over, train_y_over = oversample.fit_sample(
             train_X,
-            enc.fit_transform(train_y))
+            enc.transform(train_y))
         #train_df_over = pd.DataFrame({'data': train_df_over, 'one_hot_labels': train_labels_over})
-        return get_dataset(train_X_over, enc.inverse_transform(train_y_over)), get_dataset(test_X, test_y)
+        return get_dataset(train_X_over, enc.inverse_transform(train_y_over)), get_dataset(test_X, test_y), enc
 
-    return get_dataset(data_df), None
-
-#def xentropy(labels, logits):
+    return get_dataset(data_df), None, enc
+            
+class ContinuousPrecision(tf.keras.metrics.Metric):
     
+    def __init__(self, name='Continuous Precision', **kwargs):
+        super(ContinuousPrecision, self).__init__(name=name, **kwargs)
+        #self._name = name
+        self.precision = tf.keras.metrics.Precision()
 
-train_ds, val_ds = build_dataset('datasets/titles.csv', tokenizer, 0.2)
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        def clip(arr, clip_value):
+            return tf.cast(arr > clip_value, arr.dtype) * arr
+        y_true = clip(y_true, 0)
+        y_pred = clip(y_pred, 0)
+        self.precision.update_state(y_true, y_pred)
+
+    def result(self):
+        return self.precision.result()
+
+    def reset_states(self):
+        self.precision.reset_states()
+
+train_ds, val_ds, encoder = build_dataset('datasets/titles.csv', tokenizer, 0.2)
 train_ds = train_ds.shuffle(100).batch(64)
 val_ds = val_ds.shuffle(100).batch(64)
 optimizer = tf.keras.optimizers.Adam(learning_rate=3e-5)
@@ -90,7 +117,8 @@ loss = tf.keras.losses.MeanSquaredError()
 
 model.compile(
     optimizer=optimizer,
-    loss=loss)
+    loss=loss,
+    metrics=[ContinuousPrecision()])
 log_dir = get_logdir('logs/')
 
 print('writing all logs to {}'.format(log_dir))
