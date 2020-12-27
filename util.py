@@ -3,6 +3,9 @@ import numpy as np
 import pandas as pd
 from copy import copy
 from sklearn.model_selection import train_test_split
+from imblearn.over_sampling import RandomOverSampler
+from sklearn.preprocessing import OneHotEncoder
+import tensorflow as tf
 
 
 def manual_slice(data, labels, slice_obj):
@@ -90,7 +93,7 @@ def get_logdir(base_dir, prefix=''):
     valid_dir = []
     for d in dirs:
         try:
-            valid_dir.append(int(d))
+            valid_dir.append(int(d.replace(prefix, '')))
         except ValueError:
             continue
     valid_dir_sorted = sorted(valid_dir)
