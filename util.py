@@ -17,83 +17,76 @@ def manual_slice(data, labels, slice_obj):
 
 
 def build_dataset(path, tokenizer, val_size):
-    # tokenize text using bert tokenizer
-    # split data into train and test set
-    # store data as tf dataset
-    # return dataset objects
-    def batch_tokenize(df):
-        # tokenize text
-        # return tf dataset object
-        tokenized = tokenizer(
-                list(df['data'].values),
-                max_length=200,
-                truncation=True,
-                padding=True)
-
-        for k, v in tokenized.items():
-            tokenized[k] = np.array(v)
-        
-        return {'tokens': tokenized, 'labels': df['labels'].values}
+    
+    label_mapping = {
+            -1: 0,
+            -0.5: 0.16,
+            -0.25: 0.32, 
+            0: 0.48,
+            0.25: 0.64,
+            0.5: 0.80,
+            1: 1, 
+            }
 
     data_df = pd.read_csv(path)
     data_df['data'] = data_df['data'].apply(str)
-    data_df['labels'] = data_df['labels'].apply(float)
+    data_df['labels'] = data_df['labels'].apply(float).apply(lambda l: label_mapping[l])
+    label_values = np.array(data_df['labels'].values)[:, None]
+    enc = OneHotEncoder(handle_unknown='ignore')
+    enc.fit(label_values) 
+    data = np.array(data_df['data'].values)[:, None]
+
+    def get_dataset(X, y):
+        tokenized = tokenizer(
+            list(np.squeeze(X)),
+            max_length=200,
+            truncation=True,
+            padding=True)
+
+        def gen():
+            for idx, label in enumerate(y):
+                yield (
+                    {'input_ids': tokenized['input_ids'][idx],
+                     'attention_mask': tokenized['attention_mask'][idx],
+                     'token_type_ids': tokenized['token_type_ids'][idx]
+                        },
+                     label)
+
+        return tf.data.Dataset.from_generator(gen,
+                ({
+                    'input_ids': tf.int32,
+                    'attention_mask': tf.int32,
+                    'token_type_ids': tf.int32,
+                },
+                tf.int32),
+                ({
+                    'input_ids': tf.TensorShape([None]),
+                    'attention_mask': tf.TensorShape([None]),
+                    'token_type_ids': tf.TensorShape([None])
+                },
+                tf.TensorShape([None]))
+                )
+
     if val_size > 0:
-        train_df, test_df = train_test_split(data_df, test_size=val_size)
-        return batch_tokenize(train_df), batch_tokenize(test_df)
-    return batch_tokenize(data_df), {'tokens': [], 'labels': []}
+        train_X, test_X, train_y, test_y = train_test_split(
+                                                            data,
+                                                            label_values,
+                                                            test_size=val_size,
+                                                            stratify=label_values)
+        oversample = RandomOverSampler(sampling_strategy='minority') 
+        train_X_over, train_y_over = oversample.fit_sample(
+            train_X,
+            enc.transform(train_y))
+        return get_dataset(train_X_over, enc.inverse_transform(train_y_over)), get_dataset(test_X, test_y), enc
 
+    return get_dataset(data_df), None, enc
 
-def shuffle_and_batch(data, labels, batch_size):
-    data, labels = copy(data), copy(labels)
-    # pad the data and labels to get even splits on the batch size
-    while len(labels) % batch_size != 0:
-        idx = np.random.randint(0, len(labels))
-        labels = np.append(labels, labels[idx])
-        values = {}
-        for k, v in data.items():
-            values[k] = v[idx]
-        for k, v in values.items():
-            data[k] = np.append(data[k], v[None, :], axis=0)
-
-    # shuffle the data
-    shuffled_idx = np.random.permutation(len(labels))
-    shuffled_labels = labels[shuffled_idx]
-    shuffled_data = {}
-    for k, v in data.items():
-        #print(v.shape)
-        shuffled_data[k] = v[shuffled_idx, :]
-    
-    # batch the data together
-    n_batches = int(len(shuffled_labels) / batch_size)
-    batched_labels = np.split(
-            shuffled_labels,
-            n_batches)
-
-    batched_data = []
-
-    for i in range(n_batches):
-        batched_data.append({})
-
-    for k, v in shuffled_data.items():
-        batches = np.split(v, n_batches)
-        for i, b in enumerate(batches):
-            if k not in batched_data:
-                batched_data[i][k] = []
-            batched_data[i][k].append(b)
-
-    for d in batched_data:
-        for k, v in d.items():
-            d[k] = np.squeeze(np.array(v))
-
-    return batched_data, batched_labels
-
-
-def get_logdir(base_dir):
+def get_logdir(base_dir, prefix=''):
     try:
         dirs = os.listdir(base_dir)
-    except:
+    except FileNotFoundError:
         dirs = []
+
     valid_dir = []
     for d in dirs:
         try:
@@ -101,7 +94,6 @@ def get_logdir(base_dir):
         except ValueError:
             continue
     valid_dir_sorted = sorted(valid_dir)
-    #print(valid_dir_sorted)
     new_dir = valid_dir_sorted[-1]+1 if len(valid_dir_sorted) > 0 else 0
-    return os.path.join(base_dir, str(new_dir))
+    return os.path.join(base_dir, prefix+str(new_dir))
 
