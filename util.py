@@ -76,11 +76,13 @@ def build_dataset(path, tokenizer, val_size):
                                                             label_values,
                                                             test_size=val_size,
                                                             stratify=label_values)
+        train_y = enc.transform(train_y)
         oversample = RandomOverSampler(sampling_strategy='minority') 
-        train_X_over, train_y_over = oversample.fit_sample(
-            train_X,
-            enc.transform(train_y))
-        return get_dataset(train_X_over, enc.inverse_transform(train_y_over)), get_dataset(test_X, test_y), enc
+        for _ in range(2*len(label_mapping.keys())):
+            train_X, train_y = oversample.fit_sample(
+                train_X,
+                train_y)
+        return get_dataset(train_X, enc.inverse_transform(train_y)), get_dataset(test_X, test_y), enc
 
     return get_dataset(data_df), None, enc
 
