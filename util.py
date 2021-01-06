@@ -5,6 +5,8 @@ from copy import copy
 from sklearn.model_selection import train_test_split
 from imblearn.over_sampling import RandomOverSampler
 from sklearn.preprocessing import OneHotEncoder
+from transformers import BertTokenizer
+from transformers import TFBertForSequenceClassification
 import tensorflow as tf
 
 
@@ -18,8 +20,24 @@ def manual_slice(data, labels, slice_obj):
         sliced_data[k] = v[slice_obj]
     return sliced_data, sliced_labels
 
+def load_model_and_tokenizer(model_path):
+    tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    model = TFBertForSequenceClassification.from_pretrained(model_path)
+    return model, tokenizer
 
-def build_dataset(path, tokenizer, val_size):
+
+def process_input(samples, tokenizer):
+    tokenized = tokenizer(
+        samples,
+        max_length=200,
+        truncation=True,
+        padding=True)
+    for k, v in tokenized.items():
+        tokenized[k] = np.array(v, ndmin=2)
+    return tokenized
+
+
+def build_dataset(path, tokenizer, val_size, return_type='tf'):
     
     label_mapping = {
             -1: 0,
@@ -40,6 +58,8 @@ def build_dataset(path, tokenizer, val_size):
     data = np.array(data_df['data'].values)[:, None]
 
     def get_dataset(X, y):
+        if X is None or y is None:
+            return None
         tokenized = tokenizer(
             list(np.squeeze(X)),
             max_length=200,
@@ -72,19 +92,29 @@ def build_dataset(path, tokenizer, val_size):
 
     if val_size > 0:
         train_X, test_X, train_y, test_y = train_test_split(
-                                                            data,
-                                                            label_values,
-                                                            test_size=val_size,
-                                                            stratify=label_values)
-        train_y = enc.transform(train_y)
-        oversample = RandomOverSampler(sampling_strategy='minority') 
-        for _ in range(2*len(label_mapping.keys())):
-            train_X, train_y = oversample.fit_sample(
-                train_X,
-                train_y)
-        return get_dataset(train_X, enc.inverse_transform(train_y)), get_dataset(test_X, test_y), enc
+                                        data,
+                                        label_values,
+                                        test_size=val_size,
+                                        stratify=label_values)
+    else:
+        train_X = data
+        train_y = label_values
+        test_X, train_y = [None, None]
 
-    return get_dataset(data_df), None, enc
+    train_y = enc.transform(train_y)
+    oversample = RandomOverSampler(sampling_strategy='minority') 
+    for _ in range(10*len(label_mapping.keys())):
+        train_X, train_y = oversample.fit_sample(
+            train_X,
+            train_y)
+    train_y = enc.inverse_transform(train_y)
+    if return_type == 'tf':
+        return get_dataset(train_X, train_y), get_dataset(test_X, test_y), enc
+    elif return_type == 'dict':
+        return {'data': train_X, 'labels': train_y}, {'data': test_X, 'labels': test_y}, enc
+    else:
+        raise ValueError('invalid return type')
+
 
 def get_logdir(base_dir, prefix=''):
     try:

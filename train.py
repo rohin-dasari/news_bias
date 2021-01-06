@@ -26,8 +26,22 @@ class ContinuousPrecision(tf.keras.metrics.Metric):
 
     def update_state(self, y_true, y_pred, sample_weight=None):
         def clip(arr, clip_value):
-            return tf.cast(arr > clip_value, arr.dtype) * arr
+            return tf.cast(arr > clip_value, y_pred.dtype) * tf.cast(arr, y_pred.dtype)
+        # if y_pred is within x% of y_true, count as true
+        y_pred_discrete = []
+        clearance = tf.cast(0.3, y_pred.dtype)
         y_true = clip(y_true, 0)
+        y_true_upper_bound = y_true + clearance
+        y_true_lower_bound = y_true - clearance
+        less_than_upper_bound = tf.cast(y_pred < y_true_upper_bound, y_pred.dtype)*y_pred
+        greater_than_lower_bound = tf.cast(
+            less_than_upper_bound > y_true_lower_bound,
+            y_pred.dtype)
+        zero_idx = tf.where(greater_than_lower_bound == 0)
+        try:
+            tf.tensor_scatter_nd_update(y_pred, zero_idx, tf.cast([200]*zero_idx.shape[0], y_pred.dtype))
+        except:
+            pass
         y_pred = clip(y_pred, 0)
         self.precision.update_state(y_true, y_pred)
 
@@ -37,7 +51,7 @@ class ContinuousPrecision(tf.keras.metrics.Metric):
     def reset_states(self):
         self.precision.reset_states()
 
-train_ds, val_ds, encoder = build_dataset('datasets/titles.csv', tokenizer, 0.2)
+train_ds, val_ds, encoder = build_dataset('datasets/blurbs.csv', tokenizer, 0.2)
 train_ds = train_ds.shuffle(100).batch(64)
 val_ds = val_ds.shuffle(100).batch(64)
 optimizer = tf.keras.optimizers.Adam(learning_rate=3e-5)
