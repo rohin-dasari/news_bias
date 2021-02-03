@@ -132,3 +132,37 @@ def get_logdir(base_dir, prefix=''):
     new_dir = valid_dir_sorted[-1]+1 if len(valid_dir_sorted) > 0 else 0
     return os.path.join(base_dir, prefix+str(new_dir))
 
+
+class ContinuousPrecision(tf.keras.metrics.Metric):
+    
+    def __init__(self, name='Continuous Precision', **kwargs):
+        super(ContinuousPrecision, self).__init__(name=name, **kwargs)
+        #self._name = name
+        self.precision = tf.keras.metrics.Precision()
+
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        def clip(arr, clip_value):
+            return tf.cast(arr > clip_value, y_pred.dtype) * tf.cast(arr, y_pred.dtype)
+        # if y_pred is within x% of y_true, count as true
+        y_pred_discrete = []
+        clearance = tf.cast(0.3, y_pred.dtype)
+        y_true = clip(y_true, 0)
+        y_true_upper_bound = y_true + clearance
+        y_true_lower_bound = y_true - clearance
+        less_than_upper_bound = tf.cast(y_pred < y_true_upper_bound, y_pred.dtype)*y_pred
+        greater_than_lower_bound = tf.cast(
+            less_than_upper_bound > y_true_lower_bound,
+            y_pred.dtype)
+        zero_idx = tf.where(greater_than_lower_bound == 0)
+        try:
+            tf.tensor_scatter_nd_update(y_pred, zero_idx, tf.cast([200]*zero_idx.shape[0], y_pred.dtype))
+        except:
+            pass
+        y_pred = clip(y_pred, 0)
+        self.precision.update_state(y_true, y_pred)
+
+    def result(self):
+        return self.precision.result()
+
+    def reset_states(self):
+        self.precision.reset_states()
