@@ -1,14 +1,13 @@
 import os
 import pandas as pd
 import numpy as np
-import logging
 import tensorflow as tf
+import argparse
 from transformers import BertTokenizer
 from sklearn.model_selection import train_test_split
 from transformers import TFBertForSequenceClassification
 from util import get_logdir, build_dataset
-from imblearn.over_sampling import RandomOverSampler
-from sklearn.preprocessing import OneHotEncoder
+
 
 
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
@@ -17,7 +16,7 @@ model = TFBertForSequenceClassification.from_pretrained(
         num_labels=1
         )
 
-def get_callbacks():
+def get_callbacks(log_dir):
 
     tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=log_dir, histogram_freq=1)
     checkpoint_callback = tf.keras.callbacks.ModelCheckpoint(
@@ -29,17 +28,24 @@ def get_callbacks():
 
     return [tensorboard_callback, checkpoint_callback, earlystopping_callback]
 
+def get_args():
+    pass
 
 if __name__ == '__main__':
-    train_ds, val_ds, encoder = build_dataset('datasets/blurbs.csv', tokenizer, 0.2)
-    train_ds = train_ds.shuffle(100).batch(64)
-    val_ds = val_ds.shuffle(100).batch(64)
+
+    parser = argparse.ArgumentParser(description='read in path to dataset')
+    parser.add_argument('')
+
+    train_ds, val_ds = build_dataset('datasets/blurbs_small.csv', tokenizer, 0.3)
+    train_ds = train_ds.batch(64).prefetch(tf.data.AUTOTUNE).cache()
+    val_ds = val_ds.batch(64).prefetch(tf.data.AUTOTUNE).cache()
     optimizer = tf.keras.optimizers.Adam(learning_rate=3e-5)
-    loss = tf.keras.losses.MeanSquaredError()
+    loss = tf.keras.losses.CategoricalCrossentropy()
 
     model.compile(
         optimizer=optimizer,
         loss=loss,
+        metrics=['accuracy'],
         )
 
     log_dir = get_logdir('logs/')
@@ -49,15 +55,15 @@ if __name__ == '__main__':
     history = model.fit(
         train_ds,
         epochs=1,
-        callbacks=get_callbacks(),
-        validation_data=val_ds
+        #callbacks=get_callbacks(log_dir),
+        #validation_data=val_ds
         )
 
-    logging.info('wrote all logs to {}'.format(log_dir))
+    #logging.info('wrote all logs to {}'.format(log_dir))
 
-    model_dir = get_logdir('models', prefix='m')
-    if not os.path.isdir(model_dir):
-        os.makedirs(model_dir)
-    model.save_pretrained(model_dir)
-    logging.info('saved model to {}'.format(model_dir))
+    #model_dir = get_logdir('models', prefix='m')
+    #if not os.path.isdir(model_dir):
+    #    os.makedirs(model_dir)
+    #model.save_pretrained(model_dir)
+    #logging.info('saved model to {}'.format(model_dir))
 

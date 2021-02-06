@@ -39,22 +39,11 @@ def process_input(samples, tokenizer):
 
 def build_dataset(path, tokenizer, val_size, return_type='tf'):
     
-    label_mapping = {
-            -1: 0,
-            -0.5: 0.16,
-            -0.25: 0.32, 
-            0: 0.48,
-            0.25: 0.64,
-            0.5: 0.80,
-            1: 1, 
-            }
 
     data_df = pd.read_csv(path)
     data_df['data'] = data_df['data'].apply(str)
-    data_df['labels'] = data_df['labels'].apply(float).apply(lambda l: label_mapping[l])
+    data_df['labels'] = data_df['labels'].apply(float)
     label_values = np.array(data_df['labels'].values)[:, None]
-    enc = OneHotEncoder(handle_unknown='ignore')
-    enc.fit(label_values) 
     data = np.array(data_df['data'].values)[:, None]
 
     def get_dataset(X, y):
@@ -67,6 +56,13 @@ def build_dataset(path, tokenizer, val_size, return_type='tf'):
             padding=True)
 
         def gen():
+            #column_names = ['index', 'data', 'labels']
+            #with open(path, 'r') as f:
+            #    for i, line in enumerate(f.readlines()):
+            #        if i == 0: # dont read the column names
+            #            continue
+
+            #        pass
             for idx, label in enumerate(y):
                 yield (
                     {'input_ids': tokenized['input_ids'][idx],
@@ -81,7 +77,7 @@ def build_dataset(path, tokenizer, val_size, return_type='tf'):
                     'attention_mask': tf.int32,
                     'token_type_ids': tf.int32,
                 },
-                tf.int32),
+                tf.float32),
                 ({
                     'input_ids': tf.TensorShape([None]),
                     'attention_mask': tf.TensorShape([None]),
@@ -97,21 +93,12 @@ def build_dataset(path, tokenizer, val_size, return_type='tf'):
                                         test_size=val_size,
                                         stratify=label_values)
     else:
-        train_X = data
-        train_y = label_values
-        test_X, train_y = [None, None]
+        train_X, train_y, test_X, test_y = data, label_values, None, None
 
-    train_y = enc.transform(train_y)
-    oversample = RandomOverSampler(sampling_strategy='minority') 
-    for _ in range(10*len(label_mapping.keys())):
-        train_X, train_y = oversample.fit_sample(
-            train_X,
-            train_y)
-    train_y = enc.inverse_transform(train_y)
-    if return_type == 'tf':
-        return get_dataset(train_X, train_y), get_dataset(test_X, test_y), enc
-    elif return_type == 'dict':
-        return {'data': train_X, 'labels': train_y}, {'data': test_X, 'labels': test_y}, enc
+    if return_type == 'tf': # training code will expect the tf dataset format 
+        return get_dataset(train_X, train_y), get_dataset(test_X, test_y)
+    elif return_type == 'dict': # allowing for a dict type is useful for debugging
+        return {'data': train_X, 'labels': train_y}, {'data': test_X, 'labels': test_y}
     else:
         raise ValueError('invalid return type')
 
