@@ -5,7 +5,10 @@ import tensorflow as tf
 from transformers import BertTokenizer
 from sklearn.model_selection import train_test_split
 from transformers import TFBertForSequenceClassification
-from util import get_logdir, build_dataset
+import logging
+
+from data_util import build_dataset 
+from general_util import get_logdir
 
 
 
@@ -49,7 +52,7 @@ if __name__ == '__main__':
     history = model.fit(
         train_ds,
         epochs=1,
-        #callbacks=get_callbacks(log_dir),
+        callbacks=get_callbacks(log_dir),
         #validation_data=val_ds
         )
 
