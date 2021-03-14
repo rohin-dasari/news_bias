@@ -2,7 +2,6 @@ import os
 import pandas as pd
 import numpy as np
 import tensorflow as tf
-import argparse
 from transformers import BertTokenizer
 from sklearn.model_selection import train_test_split
 from transformers import TFBertForSequenceClassification
@@ -28,13 +27,8 @@ def get_callbacks(log_dir):
 
     return [tensorboard_callback, checkpoint_callback, earlystopping_callback]
 
-def get_args():
-    pass
 
 if __name__ == '__main__':
-
-    parser = argparse.ArgumentParser(description='read in path to dataset')
-    parser.add_argument('')
 
     train_ds, val_ds = build_dataset('datasets/blurbs_small.csv', tokenizer, 0.3)
     train_ds = train_ds.batch(64).prefetch(tf.data.AUTOTUNE).cache()
